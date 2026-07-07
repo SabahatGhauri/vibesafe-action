@@ -1,5 +1,5 @@
-name: 'VibeSafe Security Scan'
-description: 'Scan changed code for exposed secrets, injection flaws, and risky patterns on every push or PR. Fails the check on critical issues.'
+name: 'VibeSafe Vulnerability Scanner'
+description: 'Scan changed code for exposed secrets, injection flaws & risky patterns on each PR. Fails on critical issues.'
 author: 'VibeSafe'
 branding:
   icon: 'shield'
