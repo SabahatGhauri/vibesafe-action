@@ -1,0 +1,33 @@
+name: 'VibeSafe Security Scan'
+description: 'Scan changed code for exposed secrets, injection flaws, and risky patterns on every push or PR. Fails the check on critical issues.'
+author: 'VibeSafe'
+branding:
+  icon: 'shield'
+  color: 'blue'
+inputs:
+  api_key:
+    description: 'Your VibeSafe API key (starts with vibesafe_sk_). Store it as a repo secret and pass it here.'
+    required: true
+  fail_on:
+    description: 'Fail the check when the worst issue found is this severity or higher: critical | warning | never'
+    required: false
+    default: 'critical'
+  comment:
+    description: 'Post a summary comment on the pull request (true/false)'
+    required: false
+    default: 'true'
+  max_files:
+    description: 'Maximum number of changed files to scan per run'
+    required: false
+    default: '25'
+runs:
+  using: 'composite'
+  steps:
+    - run: node "$GITHUB_ACTION_PATH/scan.mjs"
+      shell: bash
+      env:
+        INPUT_API_KEY: ${{ inputs.api_key }}
+        INPUT_FAIL_ON: ${{ inputs.fail_on }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_MAX_FILES: ${{ inputs.max_files }}
+        GH_TOKEN: ${{ github.token }}
