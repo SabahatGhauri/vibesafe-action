@@ -21,6 +21,17 @@ const EXT_LANG = {
   yml: 'YAML', yaml: 'YAML', sql: 'SQL',
 };
 
+// `path.split('.').pop()` only catches bare `.env` — for `.env.local`,
+// `.env.production`, etc. it returns "local"/"production", which isn't in
+// EXT_LANG, so those files were silently skipped even though they're exactly
+// the kind of file this scanner exists to catch. Match by basename first.
+function detectLanguage(filePath) {
+  const base = (filePath.split(/[\\/]/).pop() || '');
+  if (/^\.env(\..+)?$/i.test(base)) return 'Environment file';
+  const ext = (base.split('.').pop() || '').toLowerCase();
+  return EXT_LANG[ext] || null;
+}
+
 function fail(msg) { console.error('❌ ' + msg); process.exit(1); }
 function log(msg) { console.log(msg); }
 
@@ -97,14 +108,14 @@ async function main() {
   const prNum = ev.pull_request ? ev.pull_request.number : null;
 
   let changed = await getChangedFiles(ev, repo);
-  changed = changed.filter(f => EXT_LANG[(f.split('.').pop() || '').toLowerCase()]);
+  changed = changed.filter(f => detectLanguage(f));
   if (changed.length === 0) { log('✅ VibeSafe: no scannable files changed.'); return; }
   const scanned = changed.slice(0, MAX_FILES);
   log(`VibeSafe: scanning ${scanned.length} changed file(s)…`);
 
   const results = [];
   for (const f of scanned) {
-    const lang = EXT_LANG[(f.split('.').pop() || '').toLowerCase()];
+    const lang = detectLanguage(f);
     const res = await scanFile(f, lang);
     if (res) results.push(res);
   }
