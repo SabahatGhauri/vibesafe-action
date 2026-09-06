@@ -61,7 +61,7 @@ Example — fail on warnings too, and don't comment:
 
 ## Notes
 
-- The free plan includes 3 scans/month; the action counts each file scanned. For CI use, VibeSafe **Pro/Team** offers unlimited scans.
+- The free plan includes 10 scans/month; the action counts each file scanned. For CI use, VibeSafe **Pro/Team** offers unlimited scans.
 - Requires `actions/checkout` before the action so it can read your files.
 - Supports JS/TS, Python, Java, C#, HTML, CSS, JSON, YAML, SQL, ENV, and Markdown.
 
