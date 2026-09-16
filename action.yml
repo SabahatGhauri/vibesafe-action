@@ -12,6 +12,10 @@ inputs:
     description: 'Fail the check when the worst issue found is this severity or higher: critical | warning | never'
     required: false
     default: 'critical'
+  fail_on_incomplete:
+    description: 'Fail the check when any changed file could not be fully scanned (scan error, file too large, or over max_files): true/false'
+    required: false
+    default: 'true'
   comment:
     description: 'Post a summary comment on the pull request (true/false)'
     required: false
@@ -29,5 +33,6 @@ runs:
         INPUT_API_KEY: ${{ inputs.api_key }}
         INPUT_FAIL_ON: ${{ inputs.fail_on }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_FAIL_ON_INCOMPLETE: ${{ inputs.fail_on_incomplete }}
         INPUT_MAX_FILES: ${{ inputs.max_files }}
         GH_TOKEN: ${{ github.token }}

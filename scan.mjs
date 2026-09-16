@@ -11,6 +11,7 @@ const API_KEY   = process.env.INPUT_API_KEY || '';
 const FAIL_ON   = (process.env.INPUT_FAIL_ON || 'critical').toLowerCase();
 const COMMENT   = (process.env.INPUT_COMMENT || 'true') === 'true';
 const MAX_FILES = parseInt(process.env.INPUT_MAX_FILES || '25', 10);
+const FAIL_ON_INCOMPLETE = (process.env.INPUT_FAIL_ON_INCOMPLETE || 'true') === 'true';
 const GH_TOKEN  = process.env.GH_TOKEN || '';
 
 const EXT_LANG = {
@@ -67,7 +68,8 @@ async function getChangedFiles(ev, repo) {
 async function scanFile(path, language) {
   let code;
   try { code = fs.readFileSync(path, 'utf8'); } catch { return null; }
-  if (!code || code.length < 5 || code.length > 100000) return null;
+  if (!code || code.length < 5) return null;
+  if (code.length > 100000) return { path, error: `not scanned: file is ${code.length.toLocaleString('en-US')} characters (limit 100,000)` };
   try {
     const r = await fetch(API, {
       method: 'POST',
@@ -76,7 +78,7 @@ async function scanFile(path, language) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return { path, error: data.error || `scan failed (${r.status})` };
-    return { path, score: data.score, issues: data.issues || [] };
+    return { path, score: data.score, issues: data.issues || [], coverage: data.coverage || null };
   } catch (e) {
     return { path, error: e.message };
   }
@@ -122,18 +124,27 @@ async function main() {
 
   let crit = 0, warn = 0, info = 0;
   const rows = [];
+  const incomplete = [];
+  const skippedByLimit = changed.length - scanned.length;
   for (const r of results) {
-    if (r.error) { rows.push(`| \`${r.path}\` | ⚠️ ${r.error} |`); continue; }
+    if (r.error) { incomplete.push(r.path); rows.push(`| \`${r.path}\` | ⚠️ Not scanned: ${r.error} |`); continue; }
+    if (r.coverage && r.coverage.truncated) incomplete.push(r.path);
     const c = r.issues.filter(i => i.severity === 'critical').length;
     const w = r.issues.filter(i => i.severity === 'warning').length;
     const n = r.issues.filter(i => i.severity === 'info').length;
     crit += c; warn += w; info += n;
     const badge = c ? `🔴 ${c} critical` : w ? `🟡 ${w} warning` : n ? `🔵 ${n} info` : '✅ clean';
-    rows.push(`| \`${r.path}\` | ${r.score ?? '—'}/100 — ${badge} |`);
+    const partial = r.coverage && r.coverage.truncated ? ` (partial: first ${r.coverage.scanned_chars.toLocaleString('en-US')} characters)` : '';
+    rows.push(`| \`${r.path}\` | ${r.score ?? '—'}/100 — ${badge}${partial} |`);
   }
 
-  const verdict = crit ? '🔴 Critical issues found' : warn ? '🟡 Warnings found' : '✅ No security issues found';
+  const isIncomplete = incomplete.length > 0 || skippedByLimit > 0;
+  const verdict = crit ? '🔴 Critical issues found'
+    : isIncomplete ? '⚠️ Scan incomplete'
+    : warn ? '🟡 Warnings found' : '✅ No security issues found in the scanned files';
   let body = `## 🛡️ VibeSafe Security Scan\n\n**${verdict}** — ${crit} critical · ${warn} warnings · ${info} info across ${results.length} file(s).\n\n`;
+  if (incomplete.length) body += `> ⚠️ ${incomplete.length} file(s) were not fully scanned, so this result does not cover them.\n\n`;
+  if (skippedByLimit > 0) body += `> ⚠️ ${skippedByLimit} changed file(s) were skipped by \`max_files: ${MAX_FILES}\`.\n\n`;
   body += `| File | Result |\n|------|--------|\n${rows.join('\n')}\n\n`;
   if (crit) {
     body += `\n### Critical issues\n`;
@@ -155,6 +166,10 @@ async function main() {
     (FAIL_ON === 'critical' && crit > 0) ||
     (FAIL_ON === 'warning' && (crit > 0 || warn > 0));
   if (shouldFail) fail(`VibeSafe found ${crit} critical / ${warn} warning issue(s). Fix them before merging (fail_on: ${FAIL_ON}).`);
+  if (isIncomplete && FAIL_ON_INCOMPLETE) {
+    fail(`VibeSafe scan incomplete: ${incomplete.length} file(s) not fully scanned, ${Math.max(0, skippedByLimit)} skipped. Set fail_on_incomplete: false to allow merging anyway.`);
+  }
+  if (isIncomplete) { log('⚠️ VibeSafe scan incomplete — passing because fail_on_incomplete is false.'); return; }
   log('✅ VibeSafe check passed.');
 }
 
