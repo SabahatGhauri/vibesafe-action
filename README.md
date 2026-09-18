@@ -48,6 +48,7 @@ That's it. Open a PR and VibeSafe scans the diff, comments the results, and fail
 | `fail_on` | `critical` | When to fail the check: `critical`, `warning`, or `never` |
 | `comment` | `true` | Post a summary comment on the PR |
 | `max_files` | `25` | Max changed files to scan per run |
+| `fail_on_incomplete` | `true` | Fail the check when a changed file could not be fully scanned (scan error, file over 100,000 characters, or skipped by `max_files`). A partial scan is not a pass. |
 
 Example — fail on warnings too, and don't comment:
 
