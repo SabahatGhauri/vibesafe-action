@@ -47,37 +47,45 @@ async function getChangedFiles(ev, repo) {
     const files = [];
     for (let page = 1; page <= 5; page++) {
       const r = await fetch(`${GH}/repos/${repo}/pulls/${num}/files?per_page=100&page=${page}`, { headers: ghHeaders() });
-      if (!r.ok) break;
+      if (!r.ok) throw new Error(`Cannot list changed PR files (${r.status}); scan coverage is unknown.`);
       const batch = await r.json();
+      if (!Array.isArray(batch)) throw new Error('Invalid GitHub file-list response.');
       files.push(...batch);
       if (batch.length < 100) break;
+      if (page === 5) throw new Error('PR file listing reached the 500-file limit; scan coverage is unknown.');
     }
     return files.filter(f => f.status !== 'removed').map(f => f.filename);
   }
   // Push → compare before...after
   if (ev.before && ev.after && !/^0+$/.test(ev.before)) {
     const r = await fetch(`${GH}/repos/${repo}/compare/${ev.before}...${ev.after}`, { headers: ghHeaders() });
-    if (r.ok) {
-      const d = await r.json();
-      return (d.files || []).filter(f => f.status !== 'removed').map(f => f.filename);
-    }
+    if (!r.ok) throw new Error(`Cannot compare pushed commits (${r.status}); scan coverage is unknown.`);
+    const d = await r.json();
+    if (!Array.isArray(d.files)) throw new Error('Invalid GitHub compare response.');
+    if (d.files.length >= 300) throw new Error('Push comparison reached the GitHub file limit; scan coverage is unknown.');
+    return d.files.filter(f => f.status !== 'removed').map(f => f.filename);
   }
-  return [];
+  throw new Error('Cannot determine changed files for this event. Use a pull request or a push with an existing base commit.');
 }
 
 async function scanFile(path, language) {
   let code;
-  try { code = fs.readFileSync(path, 'utf8'); } catch { return null; }
-  if (!code || code.length < 5) return null;
+  try { code = fs.readFileSync(path, 'utf8'); } catch { return { path, error: 'cannot read changed file' }; }
+  if (!code) return { path, score: 100, issues: [] };
   if (code.length > 100000) return { path, error: `not scanned: file is ${code.length.toLocaleString('en-US')} characters (limit 100,000)` };
   try {
     const r = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
       body: JSON.stringify({ code, language, source: 'github_action' }),
+      signal: AbortSignal.timeout(60000),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return { path, error: data.error || `scan failed (${r.status})` };
+    if (!data || !Number.isFinite(data.score) || data.score < 0 || data.score > 100 || !Array.isArray(data.issues)
+      || data.issues.some(i => !i || !['critical', 'warning', 'info'].includes(i.severity))) {
+      return { path, error: 'invalid scan response' };
+    }
     return { path, score: data.score, issues: data.issues || [], coverage: data.coverage || null };
   } catch (e) {
     return { path, error: e.message };
@@ -101,6 +109,11 @@ async function postComment(repo, num, body) {
 }
 
 async function main() {
+  for (const name of ['INPUT_COMMENT', 'INPUT_FAIL_ON_INCOMPLETE']) {
+    if (process.env[name] && !['true', 'false'].includes(process.env[name])) fail(`${name} must be true or false.`);
+  }
+  if (!['critical', 'warning', 'never'].includes(FAIL_ON)) fail('fail_on must be critical, warning, or never.');
+  if (!/^\d+$/.test(process.env.INPUT_MAX_FILES || '25') || !Number.isSafeInteger(MAX_FILES) || MAX_FILES < 1) fail('max_files must be a positive integer.');
   if (!API_KEY.startsWith('vibesafe_sk_')) {
     fail('Missing or invalid VibeSafe API key. Add a repo secret and pass it as `api_key`. Get one free at https://vibesafe.info → API keys.');
   }
@@ -134,7 +147,7 @@ async function main() {
     const n = r.issues.filter(i => i.severity === 'info').length;
     crit += c; warn += w; info += n;
     const badge = c ? `🔴 ${c} critical` : w ? `🟡 ${w} warning` : n ? `🔵 ${n} info` : '✅ clean';
-    const partial = r.coverage && r.coverage.truncated ? ` (partial: first ${r.coverage.scanned_chars.toLocaleString('en-US')} characters)` : '';
+    const partial = r.coverage && r.coverage.truncated ? ` (partial scan)` : '';
     rows.push(`| \`${r.path}\` | ${r.score ?? '—'}/100 — ${badge}${partial} |`);
   }
 
