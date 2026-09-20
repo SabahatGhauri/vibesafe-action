@@ -1,6 +1,8 @@
 # VibeSafe Security Scan — GitHub Action
 
-Scan your changed code for **exposed secrets, injection flaws, missing RLS, and risky patterns** on every push or pull request — and **block the merge** when critical issues are found. Built for teams shipping AI-generated apps.
+[![CI](https://github.com/SabahatGhauri/vibesafe-action/actions/workflows/ci.yml/badge.svg)](https://github.com/SabahatGhauri/vibesafe-action/actions/workflows/ci.yml)
+
+Scan your changed code for **exposed secrets, injection flaws, missing RLS, and risky patterns** on every push or pull request. The check fails when critical issues are found; configure branch rules to require that check before merging. Built for teams shipping AI-generated apps.
 
 Powered by [VibeSafe](https://vibesafe.info). Your code is never stored.
 
@@ -38,7 +40,11 @@ jobs:
           api_key: ${{ secrets.VIBESAFE_API_KEY }}
 ```
 
-That's it. Open a PR and VibeSafe scans the diff, comments the results, and fails the check on criticals.
+Open a PR and VibeSafe scans the changed files, comments the results, and fails the check on criticals. To enforce a merge block, make the scan job a required status check in your branch rules.
+
+Pull requests from forks do not receive your repository's API secret. They fail with
+a missing-key message rather than a clean scan. Do not switch to `pull_request_target`
+and execute untrusted PR code with secrets to bypass that restriction.
 
 ## Inputs
 
@@ -62,7 +68,9 @@ Example — fail on warnings too, and don't comment:
 
 ## Notes
 
-- The free plan includes 10 scans/month; the action counts each file scanned. For CI use, VibeSafe **Pro/Team** offers unlimited scans.
+- The action counts each file scanned. Check [VibeSafe](https://vibesafe.info) for current plans and scan allowances.
+- Scanner requests time out after 60 seconds. Invalid responses, unreadable files, and partial scan coverage are incomplete scans.
+- Failed GitHub file listings and listings that reach the API/file enumeration limits fail the job because coverage cannot be established. New-branch pushes without an existing base commit also fail explicitly; open a pull request against an existing base to scan those changes.
 - Requires `actions/checkout` before the action so it can read your files.
 - Supports JS/TS, Python, Java, C#, HTML, CSS, JSON, YAML, SQL, ENV, and Markdown.
 
@@ -72,3 +80,15 @@ Example — fail on warnings too, and don't comment:
 - Support: contact@vibesafe.info
 
 MIT licensed.
+
+## Development
+
+Use Node.js 18.19 or newer. No dependency installation is required.
+
+```sh
+node --test test/*.test.mjs
+```
+
+Tests execute the scanner with synthetic GitHub events and intercepted HTTP
+responses; no credentials or real API calls are needed. CI checks Node 18, 20, 22,
+and 24. Report vulnerabilities through [SECURITY.md](SECURITY.md).
